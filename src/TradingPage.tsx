@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ExchangePanel from './ExchangePanel';
 import TradingViewChart from './TradingViewChart';
+import PerformanceStats from './PerformanceStats';
 import { Target, Monitor, Layers, ShieldCheck, Wallet, Activity, XOctagon, AlertTriangle, RefreshCw, Zap, Microscope } from 'lucide-react';
 
 interface TradingPageProps {
@@ -17,25 +18,29 @@ function TradingPage({ theme }: TradingPageProps) {
   const [isPanicLoading, setIsPanicLoading] = useState(false);
   const [showPanicConfirm, setShowPanicConfirm] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [stats, setStats] = useState<any>(null);
 
   const fetchData = async () => {
     try {
-      const [exResp, posResp, balResp, sigResp] = await Promise.all([
+      const [exResp, posResp, balResp, sigResp, statsResp] = await Promise.all([
         fetch("/api/trade/exchanges"),
         fetch("/api/trade/positions"),
         fetch("/api/trade/balances"),
-        fetch("/api/signals")
+        fetch("/api/signals"),
+        fetch("/api/stats")
       ]);
 
       const exData = await exResp.json();
       const posData = await posResp.json();
       const balData = await balResp.json();
       const sigData = await sigResp.json();
+      const statsData = await statsResp.json();
 
       setExchanges(exData.active_exchanges || []);
       setPositions(posData.positions || []);
       setBalances(balData.balances || {});
       setSignals(sigData.signals || []);
+      setStats(statsData);
       setLastUpdate(new Date().toLocaleTimeString());
 
       if (availablePairs.length === 0 && sigData.signals) {
@@ -118,7 +123,7 @@ function TradingPage({ theme }: TradingPageProps) {
              <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 2, color: "#fff" }}>COMMAND TERMINAL</span>
           </div>
           
-          <div style={{ height: 24, width: 1, background: "rgba(255,b255,255,0.05)" }} />
+          <div style={{ height: 24, width: 1, background: "rgba(255,255,255,0.05)" }} />
 
           <div style={{ display: "flex", gap: 24 }}>
             {Object.entries(balances).slice(0, 4).map(([ex, bal]: [any, any]) => (
@@ -178,9 +183,14 @@ function TradingPage({ theme }: TradingPageProps) {
 
       {/* 2. Primary Workstation: Chart & Sidebar */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 24, flex: 1, minHeight: 0 }}>
-        {/* Central Chart */}
-        <div style={{ position: "relative", minHeight: 0 }}>
-          <TradingViewChart symbol={selectedPair} theme={theme} />
+        {/* Central Chart & Stats */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 24, minHeight: 0 }}>
+          <div style={{ position: "relative", flex: 2, minHeight: 0 }}>
+            <TradingViewChart symbol={selectedPair} theme={theme} />
+          </div>
+          <div style={{ flex: 1, minHeight: 250 }}>
+            <PerformanceStats stats={stats} theme={theme} />
+          </div>
         </div>
 
         {/* Sovereign Insight Sidebar */}

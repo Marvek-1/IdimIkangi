@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import TradingViewChart from "./TradingViewChart";
 import TechnicalAnalysis from "./TechnicalAnalysis";
 import TradingPage from "./TradingPage";
 import { Gauge, Zap } from "lucide-react";
-import { computeStopPctPercent, formatPctForUI, formatPFForUI } from "./utils/risk";
+import { computeStopPctPercent, formatPctForUI, formatAlphaForUI, formatPFForUI } from "./utils/risk";
 import AlphaBadges from "./AlphaBadges";
 import { useSignalsSSE, BackendSignal } from "./hooks/useSignalsSSE";
 
@@ -32,20 +32,11 @@ interface StatGroup {
   profit_factor: number;
 }
 
-interface CycleStats {
-  pairs_processed?: number;
-  setups_viable_pre_phase2?: number;
-  setups_blocked_phase2?: number;
-  signals_emitted?: number;
-  duration?: number;
-}
-
 interface BackendStats {
   simulated: StatGroup;
   live: StatGroup;
   total: StatGroup;
   unresolved: number;
-  latest_cycle?: CycleStats;
   logic_version?: string;
   config_version?: string;
 }
@@ -151,7 +142,7 @@ function SignalCard({ signal }: { signal: BackendSignal }) {
             <span>${signal.reason_trace.tp1.toLocaleString()}</span>
           </div>
         )}
-        <div style={{
+        <div style={{ 
           marginTop: 10, paddingTop: 10, borderTop: "1px dashed rgba(255,255,255,0.05)",
           display: "flex", justifyContent: "space-between", fontSize: 10, color: "rgba(255,255,255,0.4)"
         }}>
@@ -172,7 +163,7 @@ function SignalCard({ signal }: { signal: BackendSignal }) {
         </div>
 
         {/* --- V1.5 IRON GATES AUDIT --- */}
-        <div style={{
+        <div style={{ 
           marginTop: 15, padding: "10px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8,
           border: `1px solid ${THEME.base.border}`, display: "flex", flexDirection: "column", gap: 6
         }}>
@@ -273,23 +264,16 @@ export default function IdimIkangDashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { signals: liveSignals, isConnected, error: sseError } = useSignalsSSE();
+  const { signals: backendSignals, isConnected, error: sseError } = useSignalsSSE();
   const [stats, setStats] = useState<BackendStats | null>(null);
   const [allHistory, setAllHistory] = useState(false);
   const [cellStats, setCellStats] = useState<CellStat[]>([]);
-  const [historySignals, setHistorySignals] = useState<BackendSignal[]>([]);
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRADING'>('DASHBOARD');
 
   const fetchBackend = useCallback(async () => {
     try {
       const statsResp = await fetch(`/api/stats?all_history=${allHistory}`);
       if (statsResp.ok) setStats(await statsResp.json());
-
-      const signalsResp = await fetch(`/api/signals?all_history=${allHistory}`);
-      if (signalsResp.ok) {
-        const signalsData = await signalsResp.json();
-        setHistorySignals(Array.isArray(signalsData.signals) ? signalsData.signals : []);
-      }
 
       const cellResp = await fetch(`/api/cell-performance?all_history=${allHistory}`);
       if (cellResp.ok) setCellStats(await cellResp.json());
@@ -309,19 +293,7 @@ export default function IdimIkangDashboard() {
     return () => clearInterval(interval);
   }, [fetchBackend]);
 
-  const mergedSignals = [...liveSignals, ...historySignals].reduce<BackendSignal[]>((acc, signal) => {
-    if (!acc.some(existing => existing.signal_id === signal.signal_id)) {
-      acc.push(signal);
-    }
-    return acc;
-  }, []);
-
-  const activeSignals = mergedSignals.filter(s => s.outcome === null);
-  const archiveSignals = historySignals.length > 0 ? historySignals : mergedSignals;
-  const executionStats = stats && stats.live.total > 0 ? stats.live : stats?.simulated;
-  const executionLabel = stats && stats.live.total > 0 ? "LIVE" : "SIM";
-  const openSignalsCount = stats?.unresolved ?? activeSignals.length;
-  const newSignalsThisCycle = stats?.latest_cycle?.signals_emitted ?? 0;
+  const activeSignals = (backendSignals || []).filter(s => s.outcome === null);
 
   const pairedSignals: Record<string, BackendSignal[]> = {};
   activeSignals.forEach(s => {
@@ -373,50 +345,42 @@ export default function IdimIkangDashboard() {
                   <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", letterSpacing: 1 }}>TOTAL LOSSES</div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: THEME.signal.danger }}>{stats.total?.losses || 0}</div>
                 </div>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", letterSpacing: 1 }}>TOTAL WR%</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{stats.total?.win_rate || 0}%</div>
-                </div>
               </div>
 
               {/* LIVE STATS */}
               <div style={{ display: "flex", gap: 16, padding: "0 16px", borderLeft: "1px solid rgba(255,255,255,0.05)", borderRight: "1px solid rgba(255,255,255,0.05)" }}>
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 8, color: THEME.fire.primary, letterSpacing: 1 }}>{executionLabel} WINS</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: THEME.fire.primary }}>{executionStats?.wins || 0}</div>
+                  <div style={{ fontSize: 8, color: THEME.fire.primary, letterSpacing: 1 }}>LIVE WINS</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: THEME.fire.primary }}>{stats.live?.wins || 0}</div>
                 </div>
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 8, color: THEME.fire.primary, letterSpacing: 1 }}>{executionLabel} WR%</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{executionStats?.win_rate || 0}%</div>
+                  <div style={{ fontSize: 8, color: THEME.fire.primary, letterSpacing: 1 }}>LIVE WR%</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{stats.live?.win_rate || 0}%</div>
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 8, color: THEME.flow.primary, letterSpacing: 1 }}>ACTIVE OPEN</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: THEME.flow.primary }}>{openSignalsCount}</div>
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 8, color: THEME.fire.primary, letterSpacing: 1 }}>NEW THIS CYCLE</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: THEME.fire.primary }}>{newSignalsThisCycle}</div>
-                </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 8, color: THEME.flow.primary, letterSpacing: 1 }}>ACTIVE</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: THEME.flow.primary }}>{activeSignals.length}</div>
               </div>
             </div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 24, fontSize: 11, fontFamily: "monospace" }}>
-            <button onClick={() => setAllHistory(!allHistory)} style={{
-              background: allHistory ? "rgba(255,255,255,0.1)" : THEME.fire.primary,
-              color: allHistory ? "#fff" : THEME.base.sovereign,
-              border: "none", padding: "4px 16px", borderRadius: 4, cursor: "pointer",
-              fontSize: 10, fontWeight: 800, letterSpacing: 1
-            }}>{allHistory ? "MODE: ALL HISTORY" : "MODE: CURRENT ONLY"}</button>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", padding: "4px 12px", borderRadius: 100 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: isConnected ? THEME.signal.success : THEME.signal.danger }} />
-              <span style={{ color: isConnected ? THEME.signal.success : THEME.signal.danger }}>{isConnected ? "LIVE STREAM" : "STREAM OFFLINE"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 24, fontSize: 11, fontFamily: "monospace" }}>
+              <button onClick={() => setAllHistory(!allHistory)} style={{
+                background: allHistory ? "rgba(255,255,255,0.1)" : THEME.fire.primary,
+                color: allHistory ? "#fff" : THEME.base.sovereign,
+                border: "none", padding: "4px 16px", borderRadius: 4, cursor: "pointer",
+                fontSize: 10, fontWeight: 800, letterSpacing: 1
+              }}>{allHistory ? "MODE: ALL HISTORY" : "MODE: CURRENT ONLY"}</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", padding: "4px 12px", borderRadius: 100 }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: isConnected ? THEME.signal.success : THEME.signal.danger }} />
+                <span style={{ color: isConnected ? THEME.signal.success : THEME.signal.danger }}>
+                  {isConnected ? "LIVE STREAM" : (sseError || "STREAM OFFLINE")}
+                </span>
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.2)" }}>SYNC: {lastUpdate ? lastUpdate.toLocaleTimeString() : "—"}</div>
             </div>
-            <div style={{ color: "rgba(255,255,255,0.2)" }}>SYNC: {lastUpdate ? lastUpdate.toLocaleTimeString() : "—"}</div>
-          </div>
         </div>
       </div>
 
@@ -476,78 +440,20 @@ export default function IdimIkangDashboard() {
                   fontSize: 12, color: THEME.fire.primary, fontFamily: "monospace", marginBottom: 20,
                   letterSpacing: 4, fontWeight: 800, borderLeft: `3px solid ${THEME.fire.primary}`, paddingLeft: 16,
                 }}>COVENANT HISTORY ARCHIVE</div>
-                  <div style={{ overflowX: "auto" }}>
-                    <div style={{ minWidth: 1400, maxHeight: 500, overflow: "auto" }}>
-                      {/* Header Row */}
-                      <div style={{
-                        display: "grid",
-                        gridTemplateColumns: "160px 100px 60px 55px 55px 90px 80px 60px 85px 80px 80px 90px 70px 100px",
-                        gap: 8, padding: "10px 16px",
-                        borderBottom: `2px solid ${THEME.fire.primary}`,
-                        color: THEME.fire.primary, fontSize: 9, fontFamily: "monospace",
-                        fontWeight: 800, letterSpacing: 1, position: "sticky", top: 0,
-                        background: THEME.base.slate, zIndex: 10
-                      }}>
-                        <span>TIME</span>
-                        <span>PAIR</span>
-                        <span>SIDE</span>
-                        <span>SCORE</span>
-                        <span>R-MULT</span>
-                        <span>ENTRY</span>
-                        <span>SL / TP</span>
-                        <span>OUTCOME</span>
-                        <span>FAMILY</span>
-                        <span>MKT REGIME</span>
-                        <span>BTC REGIME</span>
-                        <span>EXEC SOURCE</span>
-                        <span>HOUR</span>
-                        <span>POLICY</span>
-                      </div>
-                      {archiveSignals.map((s) => {
-                        const outcome = (s.outcome || "OPEN").toUpperCase();
-                        const outcomeColor = outcome === "WIN" || outcome === "PARTIAL_WIN" || outcome === "LIVE_WIN"
-                          ? THEME.signal.success
-                          : outcome === "LOSS" || outcome === "LIVE_LOSS"
-                            ? THEME.signal.danger
-                            : outcome === "EXPIRED"
-                              ? "#b45309"
-                              : "rgba(255,255,255,0.25)";
-                        const rVal = s.r_multiple != null ? (s.r_multiple >= 0 ? `+${Number(s.r_multiple).toFixed(2)}` : Number(s.r_multiple).toFixed(2)) : "—";
-                        const rColor = s.r_multiple != null ? (s.r_multiple >= 0 ? THEME.signal.success : THEME.signal.danger) : "rgba(255,255,255,0.2)";
-                        const family = (s.signal_family || "—").toUpperCase();
-                        const familyColor = family === "TREND" ? "#60a5fa" : family === "MOMENTUM" ? "#f59e0b" : family === "MEAN_REVERSION" ? "#a78bfa" : family === "VOLATILITY" ? "#34d399" : "rgba(255,255,255,0.2)";
-                        const execColor = s.execution_source === "live" ? THEME.fire.primary : "rgba(255,255,255,0.3)";
-
-                        return (
-                          <div key={s.signal_id} style={{
-                          display: "grid",
-                          gridTemplateColumns: "160px 100px 60px 55px 55px 90px 80px 60px 85px 80px 80px 90px 70px 100px",
-                          gap: 8, padding: "8px 16px",
-                          borderBottom: "1px solid rgba(255,255,255,0.03)",
-                          color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "monospace",
-                          transition: "background 0.15s",
-                        }}
-                          onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
-                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                        >
-                          <span style={{ color: "rgba(255,255,255,0.5)" }}>{new Date(s.ts).toLocaleString()}</span>
-                          <span style={{ fontWeight: 800, color: "#fff" }}>{s.pair}</span>
-                          <span style={{ color: s.side === "LONG" ? THEME.signal.success : THEME.signal.danger, fontWeight: 700 }}>{s.side}</span>
-                          <span style={{ color: THEME.fire.primary, fontWeight: 700 }}>{s.score}</span>
-                          <span style={{ color: rColor, fontWeight: 700 }}>{rVal}</span>
-                          <span>${s.entry?.toLocaleString() ?? '—'}</span>
-                          <span style={{ fontSize: 9 }}>{s.stop_loss ? `$${s.stop_loss.toLocaleString()}` : '—'}</span>
-                          <span style={{ color: outcomeColor, fontWeight: 800, fontSize: 9 }}>{outcome}</span>
-                          <span style={{ color: familyColor, fontSize: 9 }}>{family}</span>
-                          <span style={{ fontSize: 9 }}>{(s.market_regime || '—').toUpperCase()}</span>
-                          <span style={{ fontSize: 9 }}>{(s.btc_regime || '—').toUpperCase()}</span>
-                          <span style={{ color: execColor, fontSize: 9, fontWeight: 700 }}>{(s.execution_source || 'SIM').toUpperCase()}</span>
-                          <span>{s.signal_hour_utc != null ? `${String(s.signal_hour_utc).padStart(2, '0')}:00` : '—'}</span>
-                          <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>{s.policy_version || '—'}</span>
-                        </div>
-                      );
-                    })}
+                <div style={{ maxHeight: 400, overflow: "auto" }}>
+                  {Array.isArray(backendSignals) && backendSignals.map((s) => (
+                    <div key={s.signal_id} style={{
+                      display: "grid", gridTemplateColumns: "180px 100px 100px 100px 100px 120px",
+                      gap: 12, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.4)", fontSize: 11, fontFamily: "monospace"
+                    }}>
+                      <span>{new Date(s.ts).toLocaleString()}</span>
+                      <span style={{ fontWeight: 800, color: "#fff" }}>{s.pair}</span>
+                      <span style={{ color: s.side === "LONG" ? THEME.signal.success : THEME.signal.danger }}>{s.side}</span>
+                      <span style={{ color: THEME.fire.primary }}>{s.score}</span>
+                      <span>${s.entry?.toLocaleString() ?? '—'}</span>
+                      <span style={{ color: s.outcome === "win" ? THEME.signal.success : s.outcome === "loss" ? THEME.signal.danger : "#444" }}>{s.outcome || "PERSISTING"}</span>
                     </div>
+                  ))}
                 </div>
               </div>
             </>
