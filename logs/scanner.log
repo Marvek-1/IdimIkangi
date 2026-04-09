@@ -1,0 +1,13 @@
+2026-04-09 00:58:36,812 [ERROR] Failed to load strategy ft_strategies.IdimSqueeze: IdimSqueeze does not implement IStrategy
+2026-04-09 00:58:36,813 [ERROR] Failed to load IdimSqueeze: IdimSqueeze does not implement IStrategy
+2026-04-09 00:58:36,818 [ERROR] Failed to load strategy ft_strategies.IdimSqueeze: IdimSqueeze does not implement IStrategy
+2026-04-09 00:58:36,973 [INFO] === FreqTrade Bridge Integration Test ===
+
+2026-04-09 00:58:36,974 [INFO] 1. Testing strategy loading...
+2026-04-09 00:58:36,975 [ERROR] Failed to load strategy ft_strategies.IdimSqueeze: IdimSqueeze does not implement IStrategy
+2026-04-09 00:58:36,975 [ERROR] Failed to load IdimSqueeze: IdimSqueeze does not implement IStrategy
+2026-04-09 00:58:36,976 [ERROR] Strategy loading test failed
+2026-04-09 01:09:15,069 [INFO] [e2e_smoke] Telegram alert delivered via variant 1 attempt 1
+2026-04-09 01:18:21,432 [INFO] [TRAINING_DATA] Logged 0 training records
+2026-04-09 01:18:21,433 [INFO] [CYCLE COMPLETE] universe=0 | candidates=0 | rejected=0 | errors=0 | duration=3.77s | next=300s
+2026-04-09 01:18:21,435 [ERROR] [FATAL SCAN ERROR] 'NoneType' object has no attribute 'getconn'
